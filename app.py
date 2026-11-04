@@ -97,8 +97,8 @@ HTML_CODE = '''<!DOCTYPE html>
         .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
         .chat-section { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
         
-        /* Sidebars Container */
-        .sidebars-container { width: 300px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 10px; overflow-y: auto; }
+        /* Sidebars Container - Visible Always */
+        .sidebars-container { width: 320px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 10px; overflow-y: auto; }
         .sidebar-card { background: var(--input-bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); }
         .sidebar-card h4 { font-size: 13px; margin: 0 0 8px 0; color: #00a884; display: flex; justify-content: space-between; align-items: center; }
         
@@ -106,7 +106,7 @@ HTML_CODE = '''<!DOCTYPE html>
         .mini-input-box input { flex: 1; padding: 5px 8px; border-radius: 12px; border: none; background: var(--bg-header); color: var(--text-color); font-size: 11px; outline: none; }
         .mini-input-box button { padding: 5px 8px; border-radius: 12px; font-size: 11px; }
 
-        .list-container { max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+        .list-container { max-height: 130px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
         .list-item { background: var(--bg-header); padding: 5px 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
         .list-item.completed span { text-decoration: line-through; opacity: 0.6; }
 
@@ -146,10 +146,6 @@ HTML_CODE = '''<!DOCTYPE html>
 
         #lightbox { display: none; position: fixed; z-index: 999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
         #lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
-
-        @media(max-width: 900px) {
-            .sidebars-container { display: none; }
-        }
     </style>
 </head>
 <body>
@@ -214,7 +210,7 @@ HTML_CODE = '''<!DOCTYPE html>
                 <h4>🔖 المفضلة والروابط</h4>
                 <div class="mini-input-box">
                     <input type="text" id="bmTitle" placeholder="العنوان">
-                    <input type="text" id="bmUrl" placeholder="الرابط https://...">
+                    <input type="text" id="bmUrl" placeholder="الرابط">
                     <button onclick="addBookmark()">إضافة</button>
                 </div>
                 <div class="list-container" id="bookmarksList"></div>
@@ -265,7 +261,6 @@ HTML_CODE = '''<!DOCTYPE html>
             localStorage.setItem('evos_theme', isLight ? 'light' : 'dark');
         }
 
-        // Auto theme based on hour
         const currentHour = new Date().getHours();
         if (localStorage.getItem('evos_theme') === 'light' || (!localStorage.getItem('evos_theme') && currentHour >= 6 && currentHour < 18)) {
             document.body.classList.add('light-mode');
@@ -390,7 +385,6 @@ HTML_CODE = '''<!DOCTYPE html>
             }
         }
 
-        // Tasks & Bookmarks & Activity Fetchers
         async function fetchTasks() {
             const res = await fetch('/get_tasks');
             const tasks = await res.json();
@@ -441,7 +435,6 @@ HTML_CODE = '''<!DOCTYPE html>
             });
         }
 
-        // Ambient Audio
         function playRain() {
             const audio = document.getElementById('ambientAudio');
             audio.src = 'https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg';
