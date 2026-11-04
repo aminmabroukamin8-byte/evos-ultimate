@@ -62,11 +62,17 @@ HTML_CODE = '''<!DOCTYPE html>
         <button onclick="sendMessage()">إرسال</button>
     </div>
     <script>
+        let lastMessageCount = 0;
         async function fetchMessages() {
             try {
                 const res = await fetch('/get_messages');
                 const messages = await res.json();
                 const box = document.getElementById('chatBox');
+                
+                // إذا كان عدد الرسائل هو نفسه، لا تقم بإعادة بناء الواجهة لتجنب إعادة تشغيل الفيديوهات
+                if (messages.length === lastMessageCount) return;
+                lastMessageCount = messages.length;
+                
                 box.innerHTML = '';
                 messages.forEach(m => {
                     const div = document.createElement('div');
@@ -87,7 +93,6 @@ HTML_CODE = '''<!DOCTYPE html>
                     div.innerHTML = bodyHTML;
                     box.appendChild(div);
                 });
-                box.scrollTop = box.scrollHeight;
             } catch (e) { console.error(e); }
         }
         async function sendMessage() {
