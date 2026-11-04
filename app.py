@@ -56,7 +56,7 @@ HTML_CODE = '''<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVOS Ultimate Hub - Pro Edition</title>
+    <title>EVOS Ultimate Hub - Pro Max</title>
     <style>
         :root {
             --bg-body: #111b21;
@@ -66,6 +66,7 @@ HTML_CODE = '''<!DOCTYPE html>
             --text-color: #e9edef;
             --border-color: #222d34;
             --input-bg: #2a3942;
+            --accent-color: #00a884;
         }
 
         body.light-mode {
@@ -81,32 +82,31 @@ HTML_CODE = '''<!DOCTYPE html>
         body { font-family: Tahoma, sans-serif; background: var(--bg-body); color: var(--text-color); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; transition: background 0.3s, color 0.3s; }
         .chat-header { background: var(--bg-header); padding: 10px 15px; font-size: 16px; font-weight: bold; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
         .header-left { display: flex; align-items: center; gap: 8px; }
-        .status-indicator { width: 10px; height: 10px; background-color: #00a884; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00a884; }
+        .status-indicator { width: 10px; height: 10px; background-color: var(--accent-color); border-radius: 50%; display: inline-block; box-shadow: 0 0 8px var(--accent-color); }
         .status-text { font-size: 12px; color: #8696a0; font-weight: normal; }
         
         .rooms-bar { background: var(--input-bg); padding: 6px 15px; display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); overflow-x: auto; align-items: center; justify-content: space-between; }
         .rooms-group { display: flex; gap: 8px; align-items: center; }
         .room-tab { padding: 4px 12px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--bg-header); color: var(--text-color); border: 1px solid var(--border-color); white-space: nowrap; }
-        .room-tab.active { background: #00a884; color: #fff; border-color: #00a884; }
+        .room-tab.active { background: var(--accent-color); color: #fff; border-color: var(--accent-color); }
 
         .header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .search-box { padding: 5px 10px; border-radius: 15px; border: none; background: var(--input-bg); color: var(--text-color); font-size: 13px; outline: none; }
         .btn-head { background: #2a3942; color: #fff; border: none; padding: 6px 10px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: bold; }
-        .btn-head:hover { background: #00a884; }
+        .btn-head:hover { background: var(--accent-color); }
 
         .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
         .chat-section { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
         
-        /* Sidebars Container - Visible Always */
         .sidebars-container { width: 320px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 10px; overflow-y: auto; }
         .sidebar-card { background: var(--input-bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); }
-        .sidebar-card h4 { font-size: 13px; margin: 0 0 8px 0; color: #00a884; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-card h4 { font-size: 13px; margin: 0 0 8px 0; color: var(--accent-color); display: flex; justify-content: space-between; align-items: center; }
         
         .mini-input-box { display: flex; gap: 5px; margin-bottom: 8px; }
         .mini-input-box input { flex: 1; padding: 5px 8px; border-radius: 12px; border: none; background: var(--bg-header); color: var(--text-color); font-size: 11px; outline: none; }
-        .mini-input-box button { padding: 5px 8px; border-radius: 12px; font-size: 11px; }
+        .mini-input-box button { padding: 5px 8px; border-radius: 12px; font-size: 11px; background: var(--accent-color); color: #fff; border: none; cursor: pointer; }
 
-        .list-container { max-height: 130px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+        .list-container { max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
         .list-item { background: var(--bg-header); padding: 5px 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
         .list-item.completed span { text-decoration: line-through; opacity: 0.6; }
 
@@ -120,22 +120,22 @@ HTML_CODE = '''<!DOCTYPE html>
         .msg audio { width: 260px; margin-top: 5px; outline: none; }
         .msg a { color: #53bdeb; text-decoration: none; font-weight: bold; }
         
-        .quoted-box { background: rgba(0,0,0,0.15); border-right: 3px solid #00a884; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; color: var(--text-color); opacity: 0.9; }
+        .quoted-box { background: rgba(0,0,0,0.15); border-right: 3px solid var(--accent-color); padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; color: var(--text-color); opacity: 0.9; }
         .link-preview { background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; margin-top: 5px; display: flex; flex-direction: column; gap: 3px; }
         .link-preview a { font-size: 13px; }
 
         .msg-tools { display: inline-flex; gap: 6px; margin-right: 8px; font-size: 11px; cursor: pointer; opacity: 0.7; }
         .msg-tools span:hover { opacity: 1; text-decoration: underline; }
 
-        .typing-indicator { font-size: 11px; color: #00a884; padding: 0 15px 5px 15px; height: 15px; font-weight: bold; }
+        .typing-indicator { font-size: 11px; color: var(--accent-color); padding: 0 15px 5px 15px; height: 15px; font-weight: bold; }
 
         .chat-input-area { background: var(--bg-header); padding: 10px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border-color); flex-direction: column; }
         .input-row { display: flex; gap: 8px; align-items: center; width: 100%; }
         
-        .reply-preview-bar { display: none; width: 100%; background: var(--input-bg); padding: 6px 10px; border-radius: 8px; justify-content: space-between; align-items: center; font-size: 12px; border-right: 3px solid #00a884; }
+        .reply-preview-bar { display: none; width: 100%; background: var(--input-bg); padding: 6px 10px; border-radius: 8px; justify-content: space-between; align-items: center; font-size: 12px; border-right: 3px solid var(--accent-color); }
 
         input[type="text"] { flex: 1; padding: 10px 15px; border: none; border-radius: 20px; outline: none; background: var(--input-bg); color: var(--text-color); font-size: 15px; }
-        button, .icon-btn { background: #00a884; color: white; border: none; padding: 10px 14px; border-radius: 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+        button, .icon-btn { background: var(--accent-color); color: white; border: none; padding: 10px 14px; border-radius: 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
         button:hover, .icon-btn:hover { background: #01755c; }
         .icon-btn { background: var(--input-bg); font-size: 16px; color: var(--text-color); }
         .mic-btn.recording { background: #ea0000; animation: pulse 1.2s infinite; }
@@ -151,14 +151,21 @@ HTML_CODE = '''<!DOCTYPE html>
 <body>
     <div class="chat-header">
         <div class="header-left">
-            <span>EVOS Ultimate Hub 🚀</span>
+            <span>EVOS Ultimate Hub ⚡</span>
             <span class="status-indicator" title="متصل الآن"></span>
-            <span class="status-text">متصل</span>
+            <span class="status-text" id="worldClock">جاري التحميل...</span>
         </div>
         <div class="header-actions">
+            <span id="weatherWidget" style="font-size:12px;background:var(--input-bg);padding:4px 8px;border-radius:10px;">🌤️ القاهرة</span>
             <input type="text" class="search-box" id="searchInput" placeholder="بحث..." oninput="filterMessages()">
-            <a href="/export_chat" class="btn-head" style="text-decoration: none;" title="تصدير الأرشيف">📤 تصدير</a>
-            <a href="/backup" class="btn-head" style="text-decoration: none;" title="نسخة احتياطية">💾 نسخة</a>
+            <select id="accentPicker" onchange="changeAccent(this.value)" class="btn-head" style="padding:5px;cursor:pointer;">
+                <option value="#00a884">🟢 أخضر</option>
+                <option value="#007bff">🔵 أزرق</option>
+                <option value="#6f42c1">🟣 بنفسجي</option>
+                <option value="#fd7e14">🟠 برتقالي</option>
+            </select>
+            <a href="/export_chat" class="btn-head" style="text-decoration: none;" title="تصدير">📤 تصدير</a>
+            <a href="/backup" class="btn-head" style="text-decoration: none;" title="نسخه">💾 نسخة</a>
             <button class="btn-head" onclick="toggleTheme()">☀️/🌙</button>
             <button class="btn-head" onclick="fetchMessages(true)">تحديث 🔄</button>
         </div>
@@ -216,6 +223,16 @@ HTML_CODE = '''<!DOCTYPE html>
                 <div class="list-container" id="bookmarksList"></div>
             </div>
 
+            <!-- Scratchpad & Math Calculator -->
+            <div class="sidebar-card">
+                <h4>🧮 مسودة وحاسبة سريعة</h4>
+                <div class="mini-input-box">
+                    <input type="text" id="calcInput" placeholder="اكتب عملية رياضية (مثال: 50*12)..." onkeypress="if(event.key === 'Enter') evalCalc()">
+                    <button onclick="evalCalc()">حساب</button>
+                </div>
+                <div id="calcResult" style="font-size: 12px; color: var(--accent-color); font-weight: bold; padding: 2px 5px;"></div>
+            </div>
+
             <!-- Ambient Sound Player -->
             <div class="sidebar-card">
                 <h4>🎵 أصوات التركيز</h4>
@@ -247,6 +264,32 @@ HTML_CODE = '''<!DOCTYPE html>
         let replyingToText = '';
         let recordingSeconds = 0;
         let timerInterval;
+
+        // World Clock & Accent Color
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('worldClock').innerText = now.toLocaleTimeString('ar-EG');
+        }, 1000);
+
+        function changeAccent(color) {
+            document.documentElement.style.setProperty('--accent-color', color);
+            localStorage.setItem('evos_accent', color);
+        }
+        const savedAccent = localStorage.getItem('evos_accent');
+        if (savedAccent) {
+            document.documentElement.style.setProperty('--accent-color', savedAccent);
+            document.getElementById('accentPicker').value = savedAccent;
+        }
+
+        function evalCalc() {
+            const val = document.getElementById('calcInput').value;
+            try {
+                const res = eval(val);
+                document.getElementById('calcResult').innerText = 'النتيجة: ' + res;
+            } catch(e) {
+                document.getElementById('calcResult').innerText = 'خطأ في العملية!';
+            }
+        }
 
         function switchRoom(room) {
             currentRoom = room;
