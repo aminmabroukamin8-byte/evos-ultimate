@@ -36,6 +36,9 @@ def init_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS bookmarks 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                        title TEXT, url TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS snippets 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       title TEXT, code TEXT)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS activity_log 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                        action TEXT, time TEXT)''')
@@ -56,7 +59,7 @@ HTML_CODE = '''<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVOS Ultimate Hub - Pro Max</title>
+    <title>EVOS Ultimate Hub - Pro Max Ultimate</title>
     <style>
         :root {
             --bg-body: #111b21;
@@ -98,13 +101,14 @@ HTML_CODE = '''<!DOCTYPE html>
         .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
         .chat-section { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
         
-        .sidebars-container { width: 320px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 10px; overflow-y: auto; }
+        .sidebars-container { width: 330px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 10px; overflow-y: auto; }
         .sidebar-card { background: var(--input-bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); }
         .sidebar-card h4 { font-size: 13px; margin: 0 0 8px 0; color: var(--accent-color); display: flex; justify-content: space-between; align-items: center; }
         
-        .mini-input-box { display: flex; gap: 5px; margin-bottom: 8px; }
-        .mini-input-box input { flex: 1; padding: 5px 8px; border-radius: 12px; border: none; background: var(--bg-header); color: var(--text-color); font-size: 11px; outline: none; }
-        .mini-input-box button { padding: 5px 8px; border-radius: 12px; font-size: 11px; background: var(--accent-color); color: #fff; border: none; cursor: pointer; }
+        .mini-input-box { display: flex; gap: 5px; margin-bottom: 8px; flex-direction: column; }
+        .mini-input-row { display: flex; gap: 5px; width: 100%; }
+        .mini-input-box input, .mini-input-box textarea { flex: 1; padding: 6px 8px; border-radius: 8px; border: none; background: var(--bg-header); color: var(--text-color); font-size: 11px; outline: none; resize: vertical; }
+        .mini-input-box button { padding: 6px 10px; border-radius: 8px; font-size: 11px; background: var(--accent-color); color: #fff; border: none; cursor: pointer; font-weight: bold; }
 
         .list-container { max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
         .list-item { background: var(--bg-header); padding: 5px 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
@@ -206,8 +210,10 @@ HTML_CODE = '''<!DOCTYPE html>
             <div class="sidebar-card">
                 <h4>📌 المهام</h4>
                 <div class="mini-input-box">
-                    <input type="text" id="taskInput" placeholder="مهمة جديدة..." onkeypress="if(event.key === 'Enter') addTask()">
-                    <button onclick="addTask()">إضافة</button>
+                    <div class="mini-input-row">
+                        <input type="text" id="taskInput" placeholder="مهمة جديدة..." onkeypress="if(event.key === 'Enter') addTask()">
+                        <button onclick="addTask()">إضافة</button>
+                    </div>
                 </div>
                 <div class="list-container" id="tasksList"></div>
             </div>
@@ -217,20 +223,46 @@ HTML_CODE = '''<!DOCTYPE html>
                 <h4>🔖 المفضلة والروابط</h4>
                 <div class="mini-input-box">
                     <input type="text" id="bmTitle" placeholder="العنوان">
-                    <input type="text" id="bmUrl" placeholder="الرابط">
-                    <button onclick="addBookmark()">إضافة</button>
+                    <div class="mini-input-row">
+                        <input type="text" id="bmUrl" placeholder="الرابط">
+                        <button onclick="addBookmark()">إضافة</button>
+                    </div>
                 </div>
                 <div class="list-container" id="bookmarksList"></div>
+            </div>
+
+            <!-- Code Snippets Hub -->
+            <div class="sidebar-card">
+                <h4>💻 قصاصات الأكواد</h4>
+                <div class="mini-input-box">
+                    <input type="text" id="snippetTitle" placeholder="اسم الكود (مثال: Python Snippet)">
+                    <div class="mini-input-row">
+                        <textarea id="snippetCode" placeholder="اكتب الكود هنا..." rows="2"></textarea>
+                        <button onclick="addSnippet()">حفظ</button>
+                    </div>
+                </div>
+                <div class="list-container" id="snippetsList"></div>
+            </div>
+
+            <!-- Markdown Live Preview Pad -->
+            <div class="sidebar-card">
+                <h4>📝 معاينة Markdown المتقدمة</h4>
+                <div class="mini-input-box">
+                    <textarea id="mdInput" placeholder="اكتب نص بـ Markdown..." rows="2" oninput="updateMarkdown()"></textarea>
+                </div>
+                <div id="mdPreview" style="font-size:11px; background:var(--bg-header); padding:5px; border-radius:4px; max-height:80px; overflow-y:auto; border:1px solid var(--border-color);">معاينة حية...</div>
             </div>
 
             <!-- Scratchpad & Math Calculator -->
             <div class="sidebar-card">
                 <h4>🧮 مسودة وحاسبة سريعة</h4>
                 <div class="mini-input-box">
-                    <input type="text" id="calcInput" placeholder="اكتب عملية رياضية (مثال: 50*12)..." onkeypress="if(event.key === 'Enter') evalCalc()">
-                    <button onclick="evalCalc()">حساب</button>
+                    <div class="mini-input-row">
+                        <input type="text" id="calcInput" placeholder="اكتب عملية رياضية..." onkeypress="if(event.key === 'Enter') evalCalc()">
+                        <button onclick="evalCalc()">حساب</button>
+                    </div>
                 </div>
-                <div id="calcResult" style="font-size: 12px; color: var(--accent-color); font-weight: bold; padding: 2px 5px;"></div>
+                <div id="calcResult" style="font-size: 11px; color: var(--accent-color); font-weight: bold; padding: 2px 5px;"></div>
             </div>
 
             <!-- Ambient Sound Player -->
@@ -265,7 +297,6 @@ HTML_CODE = '''<!DOCTYPE html>
         let recordingSeconds = 0;
         let timerInterval;
 
-        // World Clock & Accent Color
         setInterval(() => {
             const now = new Date();
             document.getElementById('worldClock').innerText = now.toLocaleTimeString('ar-EG');
@@ -287,8 +318,14 @@ HTML_CODE = '''<!DOCTYPE html>
                 const res = eval(val);
                 document.getElementById('calcResult').innerText = 'النتيجة: ' + res;
             } catch(e) {
-                document.getElementById('calcResult').innerText = 'خطأ في العملية!';
+                document.getElementById('calcResult').innerText = 'خطأ!';
             }
+        }
+
+        function updateMarkdown() {
+            const text = document.getElementById('mdInput').value;
+            let html = text.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>').replace(/\\*(.*?)\\*/g, '<i>$1</i>').replace(/\\n/g, '<br>');
+            document.getElementById('mdPreview').innerHTML = html || 'معاينة حية...';
         }
 
         function switchRoom(room) {
@@ -468,6 +505,26 @@ HTML_CODE = '''<!DOCTYPE html>
         }
         async function deleteBookmark(id) { await fetch('/delete_bookmark/' + id, { method: 'DELETE' }); fetchBookmarks(); }
 
+        async function fetchSnippets() {
+            const res = await fetch('/get_snippets');
+            const snips = await res.json();
+            const list = document.getElementById('snippetsList');
+            list.innerHTML = '';
+            snips.forEach(s => {
+                list.innerHTML += `<div class="list-item"><span style="flex:1;font-weight:bold;">${s.title}</span><span onclick="navigator.clipboard.writeText(\`${s.code}\`); alert('تم النسخ!');" style="cursor:pointer;" title="نسخ الكود">📋</span> <span onclick="deleteSnippet(${s.id})" style="cursor:pointer;">❌</span></div>`;
+            });
+        }
+        async function addSnippet() {
+            const title = document.getElementById('snippetTitle').value;
+            const code = document.getElementById('snippetCode').value;
+            if (!title || !code) return;
+            await fetch('/add_snippet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, code }) });
+            document.getElementById('snippetTitle').value = '';
+            document.getElementById('snippetCode').value = '';
+            fetchSnippets();
+        }
+        async function deleteSnippet(id) { await fetch('/delete_snippet/' + id, { method: 'DELETE' }); fetchSnippets(); }
+
         async function fetchActivity() {
             const res = await fetch('/get_activity');
             const logs = await res.json();
@@ -566,6 +623,7 @@ HTML_CODE = '''<!DOCTYPE html>
         fetchMessages(true);
         fetchTasks();
         fetchBookmarks();
+        fetchSnippets();
         fetchActivity();
         setInterval(() => fetchMessages(false), 3000);
     </script>
@@ -682,6 +740,38 @@ def delete_bookmark(bm_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM bookmarks WHERE id = ?', (bm_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'deleted'}), 200
+
+@app.route('/get_snippets', methods=['GET'])
+def get_snippets():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM snippets ORDER BY id DESC')
+    snips = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify(snips)
+
+@app.route('/add_snippet', methods=['POST'])
+def add_snippet():
+    data = request.json
+    if data:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO snippets (title, code) VALUES (?, ?)', (data.get('title'), data.get('code')))
+        conn.commit()
+        conn.close()
+        log_activity(f"حفظ كود: {data.get('title')}")
+        return jsonify({'status': 'success'}), 200
+    return jsonify({'error': 'Invalid'}), 400
+
+@app.route('/delete_snippet/<int:snip_id>', methods=['DELETE'])
+def delete_snippet(snip_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM snippets WHERE id = ?', (snip_id,))
     conn.commit()
     conn.close()
     return jsonify({'status': 'deleted'}), 200
