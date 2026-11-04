@@ -2,7 +2,7 @@ import os
 import sqlite3
 import base64
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory, render_template_string
+from flask import Flask, request, jsonify, send_from_directory, render_template_string, send_file
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
@@ -30,6 +30,9 @@ def init_db():
                        room TEXT DEFAULT 'عام',
                        text TEXT, type TEXT, url TEXT, filename TEXT, 
                        reply_to TEXT DEFAULT '', sender TEXT, time TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tasks 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       task TEXT, status TEXT DEFAULT 'pending')''')
     conn.commit()
     conn.close()
 
@@ -40,7 +43,7 @@ HTML_CODE = '''<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVOS Ultimate Messenger</title>
+    <title>EVOS Ultimate Messenger & Hub</title>
     <style>
         :root {
             --bg-body: #111b21;
@@ -68,7 +71,8 @@ HTML_CODE = '''<!DOCTYPE html>
         .status-indicator { width: 10px; height: 10px; background-color: #00a884; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00a884; }
         .status-text { font-size: 12px; color: #8696a0; font-weight: normal; }
         
-        .rooms-bar { background: var(--input-bg); padding: 6px 15px; display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); overflow-x: auto; }
+        .rooms-bar { background: var(--input-bg); padding: 6px 15px; display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); overflow-x: auto; align-items: center; justify-content: space-between; }
+        .rooms-group { display: flex; gap: 8px; align-items: center; }
         .room-tab { padding: 4px 12px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--bg-header); color: var(--text-color); border: 1px solid var(--border-color); white-space: nowrap; }
         .room-tab.active { background: #00a884; color: #fff; border-color: #00a884; }
 
@@ -76,6 +80,19 @@ HTML_CODE = '''<!DOCTYPE html>
         .search-box { padding: 5px 10px; border-radius: 15px; border: none; background: var(--input-bg); color: var(--text-color); font-size: 13px; outline: none; }
         .btn-head { background: #2a3942; color: #fff; border: none; padding: 6px 12px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: bold; }
         .btn-head:hover { background: #00a884; }
+
+        .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
+        .chat-section { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        
+        .tasks-sidebar { width: 280px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; }
+        .tasks-sidebar h3 { font-size: 14px; margin: 0 0 10px 0; color: #00a884; }
+        .task-input-box { display: flex; gap: 5px; margin-bottom: 10px; }
+        .task-input-box input { flex: 1; padding: 6px 10px; border-radius: 15px; border: none; background: var(--input-bg); color: var(--text-color); font-size: 12px; outline: none; }
+        .task-input-box button { padding: 6px 10px; border-radius: 15px; font-size: 12px; }
+        .tasks-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .task-item { background: var(--input-bg); padding: 8px 10px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
+        .task-item.completed span { text-decoration: line-through; opacity: 0.6; }
+        .task-actions span { cursor: pointer; margin-left: 5px; font-size: 11px; }
 
         .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { background: var(--bg-msg); padding: 10px 15px; border-radius: 8px; max-width: 75%; align-self: flex-start; word-break: break-word; border: 1px solid var(--border-color); position: relative; }
@@ -88,6 +105,8 @@ HTML_CODE = '''<!DOCTYPE html>
         .msg a { color: #53bdeb; text-decoration: none; font-weight: bold; }
         
         .quoted-box { background: rgba(0,0,0,0.15); border-right: 3px solid #00a884; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; color: var(--text-color); opacity: 0.9; }
+        .link-preview { background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; margin-top: 5px; display: flex; flex-direction: column; gap: 3px; }
+        .link-preview a { font-size: 13px; }
 
         .msg-tools { display: inline-flex; gap: 6px; margin-right: 8px; font-size: 11px; cursor: pointer; opacity: 0.7; }
         .msg-tools span:hover { opacity: 1; text-decoration: underline; }
@@ -104,50 +123,71 @@ HTML_CODE = '''<!DOCTYPE html>
         button:hover, .icon-btn:hover { background: #01755c; }
         .icon-btn { background: var(--input-bg); font-size: 16px; color: var(--text-color); }
         .mic-btn.recording { background: #ea0000; animation: pulse 1.2s infinite; }
+        .timer-display { font-size: 12px; color: #ea0000; font-weight: bold; display: none; align-items: center; gap: 4px; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
         .time { font-size: 10px; color: #8696a0; text-align: left; margin-top: 4px; }
         #fileInput { display: none; }
 
-        /* Lightbox Modal */
         #lightbox { display: none; position: fixed; z-index: 999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
         #lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
+
+        @media(max-width: 768px) {
+            .tasks-sidebar { display: none; }
+        }
     </style>
 </head>
 <body>
     <div class="chat-header">
         <div class="header-left">
-            <span>EVOS Ultimate 🔒</span>
+            <span>EVOS Ultimate Hub 🔒</span>
             <span class="status-indicator" title="متصل الآن"></span>
             <span class="status-text">متصل</span>
         </div>
         <div class="header-actions">
             <input type="text" class="search-box" id="searchInput" placeholder="بحث..." oninput="filterMessages()">
+            <a href="/backup" class="btn-head" style="text-decoration: none;" title="تحميل نسخة احتياطية">💾 نسخة</a>
             <button class="btn-head" onclick="toggleTheme()">☀️/🌙</button>
             <button class="btn-head" onclick="fetchMessages(true)">تحديث 🔄</button>
         </div>
     </div>
 
-    <div class="rooms-bar" id="roomsBar">
-        <div class="room-tab active" onclick="switchRoom('عام')">💬 عام</div>
-        <div class="room-tab" onclick="switchRoom('العمل')">💼 العمل والمشاريع</div>
-        <div class="room-tab" onclick="switchRoom('ملاحظات')">📝 ملاحظات شخصية</div>
+    <div class="rooms-bar">
+        <div class="rooms-group">
+            <div class="room-tab active" onclick="switchRoom('عام')">💬 عام</div>
+            <div class="room-tab" onclick="switchRoom('العمل')">💼 العمل والمشاريع</div>
+            <div class="room-tab" onclick="switchRoom('ملاحظات')">📝 ملاحظات شخصية</div>
+        </div>
     </div>
     
-    <div class="chat-box" id="chatBox"></div>
-    <div class="typing-indicator" id="typingIndicator"></div>
-    
-    <div class="chat-input-area">
-        <div class="reply-preview-bar" id="replyPreviewBar">
-            <span id="replyPreviewText"></span>
-            <span style="cursor: pointer; font-weight: bold;" onclick="cancelReply()">✕</span>
+    <div class="main-container">
+        <div class="chat-section">
+            <div class="chat-box" id="chatBox"></div>
+            <div class="typing-indicator" id="typingIndicator"></div>
+            
+            <div class="chat-input-area">
+                <div class="reply-preview-bar" id="replyPreviewBar">
+                    <span id="replyPreviewText"></span>
+                    <span style="cursor: pointer; font-weight: bold;" onclick="cancelReply()">✕</span>
+                </div>
+                <div class="input-row">
+                    <label for="fileInput" class="icon-btn" title="إرفاق ملف">📎</label>
+                    <input type="file" id="fileInput" onchange="uploadFile()">
+                    <button type="button" class="icon-btn" onclick="sendLocation()" title="إرسال موقعي الجغرافي">📍</button>
+                    <button type="button" id="micBtn" class="icon-btn mic-btn" onclick="toggleRecordVoice()" title="تسجيل صوتي">🎙️</button>
+                    <span id="timerDisplay" class="timer-display">🔴 <span id="secondsCount">0</span> ث</span>
+                    <input type="text" id="messageInput" placeholder="اكتب رسالتك هنا أو الصق صورة (Ctrl+V)..." onpaste="handlePaste(event)" oninput="notifyTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <button onclick="sendMessage()">إرسال</button>
+                </div>
+            </div>
         </div>
-        <div class="input-row">
-            <label for="fileInput" class="icon-btn" title="إرفاق ملف">📎</label>
-            <input type="file" id="fileInput" onchange="uploadFile()">
-            <button type="button" class="icon-btn" onclick="sendLocation()" title="إرسال موقعي الجغرافي">📍</button>
-            <button type="button" id="micBtn" class="icon-btn mic-btn" onclick="toggleRecordVoice()" title="تسجيل صوتي">🎙️</button>
-            <input type="text" id="messageInput" placeholder="اكتب رسالتك هنا..." oninput="notifyTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
-            <button onclick="sendMessage()">إرسال</button>
+
+        <div class="tasks-sidebar">
+            <h3>📌 مهامي وملاحظاتي</h3>
+            <div class="task-input-box">
+                <input type="text" id="taskInput" placeholder="مهمة جديدة..." onkeypress="if(event.key === 'Enter') addTask()">
+                <button onclick="addTask()">إضافة</button>
+            </div>
+            <div class="tasks-list" id="tasksList"></div>
         </div>
     </div>
 
@@ -162,7 +202,8 @@ HTML_CODE = '''<!DOCTYPE html>
         let allMessagesCache = [];
         let currentRoom = 'عام';
         let replyingToText = '';
-        let typingTimeout;
+        let recordingSeconds = 0;
+        let timerInterval;
 
         function switchRoom(room) {
             currentRoom = room;
@@ -211,8 +252,8 @@ HTML_CODE = '''<!DOCTYPE html>
                 
                 let toolsHTML = `
                     <div class="msg-tools">
-                        <span onclick="setReply('${m.text ? m.text.replace(/'/g, "\\'") : 'مرفق'}')">↩️ رد</span>
-                        ${m.sender === 'أمين' ? `<span onclick="editMessage(${m.id}, '${m.text ? m.text.replace(/'/g, "\\'") : ''}')">✏️</span> <span onclick="deleteMessage(${m.id})">🗑️</span>` : ''}
+                        <span onclick="setReply('${m.text ? m.text.replace(/'/g, "\\'").replace(/"/g, '&quot;') : 'مرفق'}')">↩️ رد</span>
+                        ${m.sender === 'أمين' ? `<span onclick="editMessage(${m.id}, '${m.text ? m.text.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">✏️</span> <span onclick="deleteMessage(${m.id})">🗑️</span>` : ''}
                     </div>
                 `;
 
@@ -230,7 +271,13 @@ HTML_CODE = '''<!DOCTYPE html>
                 } else if (m.type === 'file') {
                     bodyHTML += `<br>📁 <a href="${m.url}" target="_blank" download="${m.filename}">${m.filename || 'تحميل الملف'}</a>`;
                 } else {
-                    bodyHTML += `${m.text}`;
+                    let formattedText = m.text;
+                    const urlMatch = m.text.match(/(https?:\/\/[^\s]+)/g);
+                    if (urlMatch && !m.text.includes('google.com/maps')) {
+                        const link = urlMatch[0];
+                        formattedText += `<div class="link-preview">🌐 <a href="${link}" target="_blank">${link}</a></div>`;
+                    }
+                    bodyHTML += `${formattedText}`;
                 }
                 
                 bodyHTML += `<div class="time">${m.time}</div>`;
@@ -302,6 +349,73 @@ HTML_CODE = '''<!DOCTYPE html>
             fetchMessages(true);
         }
 
+        async function handlePaste(event) {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            for (let index in items) {
+                let item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    event.preventDefault();
+                    let blob = item.getAsFile();
+                    let formData = new FormData();
+                    formData.append('file', blob, 'clipboard_img_' + Date.now() + '.png');
+                    let res = await fetch('/upload', { method: 'POST', body: formData });
+                    let data = await res.json();
+                    if (data.status === 'success') {
+                        await fetch('/send_message', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ room: currentRoom, text: '', type: 'image', url: '/uploads/' + data.filename, filename: data.filename, reply_to: replyingToText, sender: 'أمين' })
+                        });
+                        cancelReply();
+                        fetchMessages(true);
+                    }
+                }
+            }
+        }
+
+        async function fetchTasks() {
+            try {
+                const res = await fetch('/get_tasks');
+                const tasks = await res.json();
+                const list = document.getElementById('tasksList');
+                list.innerHTML = '';
+                tasks.forEach(t => {
+                    const div = document.createElement('div');
+                    div.className = 'task-item' + (t.status === 'completed' ? ' completed' : '');
+                    div.innerHTML = `
+                        <span onclick="toggleTask(${t.id})" style="cursor: pointer; flex: 1;">${t.task}</span>
+                        <div class="task-actions">
+                            <span onclick="deleteTask(${t.id})">❌</span>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+            } catch(e) {}
+        }
+
+        async function addTask() {
+            const input = document.getElementById('taskInput');
+            if (!input.value.trim()) return;
+            const task = input.value;
+            input.value = '';
+            await fetch('/add_task', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task: task })
+            });
+            fetchTasks();
+        }
+
+        async function toggleTask(id) {
+            await fetch('/toggle_task/' + id, { method: 'PUT' });
+            fetchTasks();
+        }
+
+        async function deleteTask(id) {
+            await fetch('/delete_task/' + id, { method: 'DELETE' });
+            fetchTasks();
+        }
+
         async function deleteMessage(id) {
             if (!confirm('حذف هذه الرسالة؟')) return;
             await fetch('/delete_message/' + id, { method: 'DELETE' });
@@ -363,13 +477,27 @@ HTML_CODE = '''<!DOCTYPE html>
         let isRecording = false;
         async function toggleRecordVoice() {
             const micBtn = document.getElementById('micBtn');
+            const timerDisplay = document.getElementById('timerDisplay');
+            const secondsCount = document.getElementById('secondsCount');
+            
             if (!isRecording) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     mediaRecorder = new MediaRecorder(stream);
                     audioChunks = [];
+                    recordingSeconds = 0;
+                    secondsCount.innerText = '0';
+                    timerDisplay.style.display = 'flex';
+                    
+                    timerInterval = setInterval(() => {
+                        recordingSeconds++;
+                        secondsCount.innerText = recordingSeconds;
+                    }, 1000);
+
                     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
                     mediaRecorder.onstop = async () => {
+                        clearInterval(timerInterval);
+                        timerDisplay.style.display = 'none';
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                         const fileName = 'voice_' + Date.now() + '.webm';
                         const formData = new FormData();
@@ -397,6 +525,7 @@ HTML_CODE = '''<!DOCTYPE html>
         }
 
         fetchMessages(true);
+        fetchTasks();
         setInterval(() => fetchMessages(false), 3000);
     </script>
 </body>
@@ -440,6 +569,57 @@ def send_message():
         conn.close()
         return jsonify({'status': 'success'}), 200
     return jsonify({'error': 'Invalid'}), 400
+
+@app.route('/get_tasks', methods=['GET'])
+def get_tasks():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM tasks ORDER BY id DESC')
+    rows = cursor.fetchall()
+    tasks = [dict(row) for row in rows]
+    conn.close()
+    return jsonify(tasks)
+
+@app.route('/add_task', methods=['POST'])
+def add_task():
+    data = request.json
+    if data and 'task' in data:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO tasks (task) VALUES (?)', (data['task'],))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'}), 200
+    return jsonify({'error': 'Invalid'}), 400
+
+@app.route('/toggle_task/<int:task_id>', methods=['PUT'])
+def toggle_task(task_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT status FROM tasks WHERE id = ?', (task_id,))
+    row = cursor.fetchone()
+    if row:
+        new_status = 'completed' if row[0] == 'pending' else 'pending'
+        cursor.execute('UPDATE tasks SET status = ? WHERE id = ?', (new_status, task_id))
+        conn.commit()
+    conn.close()
+    return jsonify({'status': 'updated'}), 200
+
+@app.route('/delete_task/<int:task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'deleted'}), 200
+
+@app.route('/backup', methods=['GET'])
+def backup_database():
+    if os.path.exists(DB_PATH):
+        return send_file(DB_PATH, as_attachment=True, download_name='evos_backup.db')
+    return jsonify({'error': 'Not found'}), 404
 
 @app.route('/typing', methods=['POST'])
 def typing():
