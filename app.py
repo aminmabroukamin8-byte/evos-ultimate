@@ -11,7 +11,6 @@ UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DB_PATH = 'evos_chat.db'
 
-# دالة بسيطة للتشفير وفك التشفير محلياً (Base64 Safe Layer)
 def encrypt_text(text):
     if not text: return ""
     return base64.b64encode(text.encode('utf-8')).decode('utf-8')
@@ -28,7 +27,9 @@ def init_db():
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS messages 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       text TEXT, type TEXT, url TEXT, filename TEXT, sender TEXT, time TEXT)''')
+                       room TEXT DEFAULT 'عام',
+                       text TEXT, type TEXT, url TEXT, filename TEXT, 
+                       reply_to TEXT DEFAULT '', sender TEXT, time TEXT)''')
     conn.commit()
     conn.close()
 
@@ -67,6 +68,10 @@ HTML_CODE = '''<!DOCTYPE html>
         .status-indicator { width: 10px; height: 10px; background-color: #00a884; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00a884; }
         .status-text { font-size: 12px; color: #8696a0; font-weight: normal; }
         
+        .rooms-bar { background: var(--input-bg); padding: 6px 15px; display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); overflow-x: auto; }
+        .room-tab { padding: 4px 12px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--bg-header); color: var(--text-color); border: 1px solid var(--border-color); white-space: nowrap; }
+        .room-tab.active { background: #00a884; color: #fff; border-color: #00a884; }
+
         .header-actions { display: flex; gap: 6px; align-items: center; }
         .search-box { padding: 5px 10px; border-radius: 15px; border: none; background: var(--input-bg); color: var(--text-color); font-size: 13px; outline: none; }
         .btn-head { background: #2a3942; color: #fff; border: none; padding: 6px 12px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: bold; }
@@ -75,15 +80,25 @@ HTML_CODE = '''<!DOCTYPE html>
         .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { background: var(--bg-msg); padding: 10px 15px; border-radius: 8px; max-width: 75%; align-self: flex-start; word-break: break-word; border: 1px solid var(--border-color); position: relative; }
         .msg.me { background: var(--bg-msg-me); align-self: flex-end; border: none; }
-        .msg img { max-width: 100%; max-height: 250px; border-radius: 6px; display: block; margin-top: 5px; }
+        
+        .msg img { max-width: 100%; max-height: 250px; border-radius: 6px; display: block; margin-top: 5px; cursor: pointer; transition: transform 0.2s; }
+        .msg img:hover { transform: scale(1.02); }
         .msg video { width: 100%; max-height: 250px; border-radius: 6px; display: block; margin-top: 5px; background: #000; }
         .msg audio { width: 260px; margin-top: 5px; outline: none; }
         .msg a { color: #53bdeb; text-decoration: none; font-weight: bold; }
         
+        .quoted-box { background: rgba(0,0,0,0.15); border-right: 3px solid #00a884; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 6px; color: var(--text-color); opacity: 0.9; }
+
         .msg-tools { display: inline-flex; gap: 6px; margin-right: 8px; font-size: 11px; cursor: pointer; opacity: 0.7; }
         .msg-tools span:hover { opacity: 1; text-decoration: underline; }
 
-        .chat-input-area { background: var(--bg-header); padding: 10px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border-color); }
+        .typing-indicator { font-size: 11px; color: #00a884; padding: 0 15px 5px 15px; height: 15px; font-weight: bold; }
+
+        .chat-input-area { background: var(--bg-header); padding: 10px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border-color); flex-direction: column; }
+        .input-row { display: flex; gap: 8px; align-items: center; width: 100%; }
+        
+        .reply-preview-bar { display: none; width: 100%; background: var(--input-bg); padding: 6px 10px; border-radius: 8px; justify-content: space-between; align-items: center; font-size: 12px; border-right: 3px solid #00a884; }
+
         input[type="text"] { flex: 1; padding: 10px 15px; border: none; border-radius: 20px; outline: none; background: var(--input-bg); color: var(--text-color); font-size: 15px; }
         button, .icon-btn { background: #00a884; color: white; border: none; padding: 10px 14px; border-radius: 20px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; }
         button:hover, .icon-btn:hover { background: #01755c; }
@@ -92,6 +107,10 @@ HTML_CODE = '''<!DOCTYPE html>
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
         .time { font-size: 10px; color: #8696a0; text-align: left; margin-top: 4px; }
         #fileInput { display: none; }
+
+        /* Lightbox Modal */
+        #lightbox { display: none; position: fixed; z-index: 999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
+        #lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -107,25 +126,50 @@ HTML_CODE = '''<!DOCTYPE html>
             <button class="btn-head" onclick="fetchMessages(true)">تحديث 🔄</button>
         </div>
     </div>
+
+    <div class="rooms-bar" id="roomsBar">
+        <div class="room-tab active" onclick="switchRoom('عام')">💬 عام</div>
+        <div class="room-tab" onclick="switchRoom('العمل')">💼 العمل والمشاريع</div>
+        <div class="room-tab" onclick="switchRoom('ملاحظات')">📝 ملاحظات شخصية</div>
+    </div>
     
     <div class="chat-box" id="chatBox"></div>
+    <div class="typing-indicator" id="typingIndicator"></div>
     
     <div class="chat-input-area">
-        <label for="fileInput" class="icon-btn" title="إرفاق ملف">📎</label>
-        <input type="file" id="fileInput" onchange="uploadFile()">
-        <button type="button" class="icon-btn" onclick="sendLocation()" title="إرسال موقعي الجغرافي">📍</button>
-        <button type="button" id="micBtn" class="icon-btn mic-btn" onclick="toggleRecordVoice()" title="تسجيل صوتي">🎙️</button>
-        <input type="text" id="messageInput" placeholder="اكتب رسالتك هنا..." onkeypress="if(event.key === 'Enter') sendMessage()">
-        <button onclick="sendMessage()">إرسال</button>
+        <div class="reply-preview-bar" id="replyPreviewBar">
+            <span id="replyPreviewText"></span>
+            <span style="cursor: pointer; font-weight: bold;" onclick="cancelReply()">✕</span>
+        </div>
+        <div class="input-row">
+            <label for="fileInput" class="icon-btn" title="إرفاق ملف">📎</label>
+            <input type="file" id="fileInput" onchange="uploadFile()">
+            <button type="button" class="icon-btn" onclick="sendLocation()" title="إرسال موقعي الجغرافي">📍</button>
+            <button type="button" id="micBtn" class="icon-btn mic-btn" onclick="toggleRecordVoice()" title="تسجيل صوتي">🎙️</button>
+            <input type="text" id="messageInput" placeholder="اكتب رسالتك هنا..." oninput="notifyTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()">إرسال</button>
+        </div>
+    </div>
+
+    <div id="lightbox" onclick="this.style.display='none'">
+        <img id="lightboxImg" src="">
     </div>
 
     <script>
-        if (Notification.permission !== "granted") {
-            Notification.requestPermission();
-        }
+        if (Notification.permission !== "granted") { Notification.requestPermission(); }
 
         let lastMessageCount = 0;
         let allMessagesCache = [];
+        let currentRoom = 'عام';
+        let replyingToText = '';
+        let typingTimeout;
+
+        function switchRoom(room) {
+            currentRoom = room;
+            document.querySelectorAll('.room-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            fetchMessages(true);
+        }
 
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
@@ -139,7 +183,7 @@ HTML_CODE = '''<!DOCTYPE html>
 
         async function fetchMessages(isManual = false) {
             try {
-                const res = await fetch('/get_messages');
+                const res = await fetch(`/get_messages?room=${encodeURIComponent(currentRoom)}`);
                 const messages = await res.json();
                 allMessagesCache = messages;
                 
@@ -148,7 +192,7 @@ HTML_CODE = '''<!DOCTYPE html>
                 if (messages.length > lastMessageCount && lastMessageCount > 0) {
                     const latest = messages[messages.length - 1];
                     if (Notification.permission === "granted" && latest.sender !== 'أمين') {
-                        new Notification("رسالة جديدة في EVOS", { body: `${latest.sender}: ${latest.text || 'مرفق جديد'}` });
+                        new Notification(`رسالة جديدة في (${currentRoom})`, { body: `${latest.sender}: ${latest.text || 'مرفق جديد'}` });
                     }
                 }
 
@@ -165,17 +209,18 @@ HTML_CODE = '''<!DOCTYPE html>
                 const div = document.createElement('div');
                 div.className = 'msg' + (m.sender === 'أمين' ? ' me' : '');
                 
-                let toolsHTML = m.sender === 'أمين' ? `
+                let toolsHTML = `
                     <div class="msg-tools">
-                        <span onclick="editMessage(${m.id}, '${m.text.replace(/'/g, "\\'")}')">✏️</span>
-                        <span onclick="deleteMessage(${m.id})">🗑️</span>
+                        <span onclick="setReply('${m.text ? m.text.replace(/'/g, "\\'") : 'مرفق'}')">↩️ رد</span>
+                        ${m.sender === 'أمين' ? `<span onclick="editMessage(${m.id}, '${m.text ? m.text.replace(/'/g, "\\'") : ''}')">✏️</span> <span onclick="deleteMessage(${m.id})">🗑️</span>` : ''}
                     </div>
-                ` : '';
+                `;
 
-                let bodyHTML = `<b>${m.sender}:</b> ${toolsHTML}`;
+                let replyHTML = m.reply_to ? `<div class="quoted-box">رد على: ${m.reply_to}</div>` : '';
+                let bodyHTML = `${replyHTML}<b>${m.sender}:</b> ${toolsHTML}`;
                 
                 if (m.type === 'image') {
-                    bodyHTML += `<br><img src="${m.url}" alt="صورة" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'100\\'><rect width=\\'100%\\' height=\\'100%\\' fill=\\'%23222\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%23888\\' font-size=\\'12\\' dominant-baseline=\\'middle\\' text-anchor=\\'middle\\'>صورة غير متوفرة</text></svg>';">`;
+                    bodyHTML += `<br><img src="${m.url}" alt="صورة" onclick="openLightbox('${m.url}')" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'100\\'><rect width=\\'100%\\' height=\\'100%\\' fill=\\'%23222\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%23888\\' font-size=\\'12\\' dominant-baseline=\\'middle\\' text-anchor=\\'middle\\'>صورة غير متوفرة</text></svg>';">`;
                 } else if (m.type === 'video') {
                     const storageKey = 'video_time_' + m.url;
                     bodyHTML += `<br><video src="${m.url}" controls playsinline preload="auto" ontimeupdate="localStorage.setItem('${storageKey}', this.currentTime)" onloadedmetadata="this.currentTime = localStorage.getItem('${storageKey}') || 0"></video>`;
@@ -193,18 +238,51 @@ HTML_CODE = '''<!DOCTYPE html>
                 box.appendChild(div);
             });
 
-            if (shouldScroll) {
-                box.scrollTop = box.scrollHeight;
-            }
+            if (shouldScroll) { box.scrollTop = box.scrollHeight; }
         }
+
+        function openLightbox(url) {
+            document.getElementById('lightboxImg').src = url;
+            document.getElementById('lightbox').style.display = 'flex';
+        }
+
+        function setReply(text) {
+            replyingToText = text;
+            document.getElementById('replyPreviewText').innerText = 'الرد على: ' + text;
+            document.getElementById('replyPreviewBar').style.display = 'flex';
+            document.getElementById('messageInput').focus();
+        }
+
+        function cancelReply() {
+            replyingToText = '';
+            document.getElementById('replyPreviewBar').style.display = 'none';
+        }
+
+        function notifyTyping() {
+            fetch('/typing', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ room: currentRoom, sender: 'أمين' })
+            });
+        }
+
+        setInterval(async () => {
+            try {
+                const res = await fetch(`/get_typing?room=${encodeURIComponent(currentRoom)}`);
+                const data = await res.json();
+                const indicator = document.getElementById('typingIndicator');
+                if (data.is_typing && data.sender !== 'أمين') {
+                    indicator.innerText = `${data.sender} يكتب الآن...`;
+                } else {
+                    indicator.innerText = '';
+                }
+            } catch(e) {}
+        }, 2000);
 
         function filterMessages() {
             const query = document.getElementById('searchInput').value.toLowerCase().trim();
-            if (!query) {
-                renderMessages(allMessagesCache, false);
-                return;
-            }
-            const filtered = allMessagesCache.filter(m => m.text.toLowerCase().includes(query) || (m.filename && m.filename.toLowerCase().includes(query)));
+            if (!query) { renderMessages(allMessagesCache, false); return; }
+            const filtered = allMessagesCache.filter(m => (m.text && m.text.toLowerCase().includes(query)) || (m.filename && m.filename.toLowerCase().includes(query)));
             renderMessages(filtered, false);
         }
 
@@ -212,17 +290,20 @@ HTML_CODE = '''<!DOCTYPE html>
             const input = document.getElementById('messageInput');
             if (!input.value.trim()) return;
             const text = input.value;
+            const reply = replyingToText;
             input.value = '';
+            cancelReply();
+            
             await fetch('/send_message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text, type: 'text', sender: 'أمين' })
+                body: JSON.stringify({ room: currentRoom, text: text, type: 'text', reply_to: reply, sender: 'أمين' })
             });
             fetchMessages(true);
         }
 
         async function deleteMessage(id) {
-            if (!confirm('هل تريد حذف هذه الرسالة؟')) return;
+            if (!confirm('حذف هذه الرسالة؟')) return;
             await fetch('/delete_message/' + id, { method: 'DELETE' });
             fetchMessages(true);
         }
@@ -240,22 +321,17 @@ HTML_CODE = '''<!DOCTYPE html>
         }
 
         function sendLocation() {
-            if (!navigator.geolocation) {
-                alert('ميزة الموقع الجغرافي غير مدعومة في متصفحك.');
-                return;
-            }
+            if (!navigator.geolocation) { alert('الموقع الجغرافي غير مدعوم.'); return; }
             navigator.geolocation.getCurrentPosition(async (pos) => {
-                const lat = pos.coords.latitude;
-                const lon = pos.coords.longitude;
-                const locUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+                const locUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
                 const text = `📍 موقعي الجغرافي: <a href="${locUrl}" target="_blank">فتح الخريطة</a>`;
                 await fetch('/send_message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text, type: 'text', sender: 'أمين' })
+                    body: JSON.stringify({ room: currentRoom, text: text, type: 'text', reply_to: '', sender: 'أمين' })
                 });
                 fetchMessages(true);
-            }, () => { alert('تعذر الحصول على الموقع الجغرافي.'); });
+            }, () => { alert('تعذر جلب الموقع.'); });
         }
 
         async function uploadFile() {
@@ -274,8 +350,9 @@ HTML_CODE = '''<!DOCTYPE html>
                 await fetch('/send_message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: '', type: type, url: '/uploads/' + data.filename, filename: file.name, sender: 'أمين' })
+                    body: JSON.stringify({ room: currentRoom, text: '', type: type, url: '/uploads/' + data.filename, filename: file.name, reply_to: replyingToText, sender: 'أمين' })
                 });
+                cancelReply();
                 fetchMessages(true);
             }
             fileInput.value = '';
@@ -303,7 +380,7 @@ HTML_CODE = '''<!DOCTYPE html>
                             await fetch('/send_message', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ text: '', type: 'audio', url: '/uploads/' + data.filename, filename: data.filename, sender: 'أمين' })
+                                body: JSON.stringify({ room: currentRoom, text: '', type: 'audio', url: '/uploads/' + data.filename, filename: data.filename, reply_to: '', sender: 'أمين' })
                             });
                             fetchMessages(true);
                         }
@@ -311,7 +388,7 @@ HTML_CODE = '''<!DOCTYPE html>
                     mediaRecorder.start();
                     isRecording = true;
                     micBtn.classList.add('recording');
-                } catch (err) { alert('لا يمكن الوصول إلى الميكروفون.'); }
+                } catch (err) { alert('تعذر الوصول للميكروفون.'); }
             } else {
                 mediaRecorder.stop();
                 isRecording = false;
@@ -326,21 +403,25 @@ HTML_CODE = '''<!DOCTYPE html>
 </html>
 '''
 
+typing_states = {}
+
 @app.route('/')
 def index():
     return render_template_string(HTML_CODE)
 
 @app.route('/get_messages', methods=['GET'])
 def get_messages():
+    room = request.args.get('room', 'عام')
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM messages ORDER BY id ASC')
+    cursor.execute('SELECT * FROM messages WHERE room = ? ORDER BY id ASC', (room,))
     rows = cursor.fetchall()
     messages = []
     for row in rows:
         m = dict(row)
-        m['text'] = decrypt_text(m['text'])  # فك التشفير التلقائي عند العرض
+        m['text'] = decrypt_text(m['text'])
+        m['reply_to'] = decrypt_text(m['reply_to'])
         messages.append(m)
     conn.close()
     return jsonify(messages)
@@ -349,15 +430,33 @@ def get_messages():
 def send_message():
     data = request.json
     if data:
-        cipher_text = encrypt_text(data.get('text', ''))  # تشفير النص قبل التخزين
+        cipher_text = encrypt_text(data.get('text', ''))
+        cipher_reply = encrypt_text(data.get('reply_to', ''))
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO messages (text, type, url, filename, sender, time) VALUES (?, ?, ?, ?, ?, ?)', 
-                       (cipher_text, data.get('type', 'text'), data.get('url', ''), data.get('filename', ''), data.get('sender', 'أمين'), datetime.now().strftime('%H:%M')))
+        cursor.execute('INSERT INTO messages (room, text, type, url, filename, reply_to, sender, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+                       (data.get('room', 'عام'), cipher_text, data.get('type', 'text'), data.get('url', ''), data.get('filename', ''), cipher_reply, data.get('sender', 'أمين'), datetime.now().strftime('%H:%M')))
         conn.commit()
         conn.close()
         return jsonify({'status': 'success'}), 200
     return jsonify({'error': 'Invalid'}), 400
+
+@app.route('/typing', methods=['POST'])
+def typing():
+    data = request.json
+    if data:
+        room = data.get('room', 'عام')
+        typing_states[room] = {'sender': data.get('sender', 'أمين'), 'time': datetime.now()}
+        return jsonify({'status': 'ok'}), 200
+    return jsonify({'error': 'Invalid'}), 400
+
+@app.route('/get_typing', methods=['GET'])
+def get_typing():
+    room = request.args.get('room', 'عام')
+    state = typing_states.get(room)
+    if state and (datetime.now() - state['time']).seconds < 4:
+        return jsonify({'is_typing': True, 'sender': state['sender']})
+    return jsonify({'is_typing': False})
 
 @app.route('/edit_message/<int:msg_id>', methods=['PUT'])
 def edit_message(msg_id):
