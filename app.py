@@ -28,6 +28,9 @@ HTML_CODE = '''<!DOCTYPE html>
     <style>
         body { font-family: Tahoma, sans-serif; background: #111b21; color: #e9edef; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
         .chat-header { background: #202c33; padding: 15px; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid #222d34; display: flex; justify-content: space-between; align-items: center; }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .status-indicator { width: 10px; height: 10px; background-color: #00a884; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00a884; }
+        .status-text { font-size: 12px; color: #8696a0; font-weight: normal; }
         .refresh-btn { background: #2a3942; color: #fff; border: none; padding: 6px 14px; border-radius: 15px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .refresh-btn:hover { background: #00a884; }
         .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
@@ -50,8 +53,12 @@ HTML_CODE = '''<!DOCTYPE html>
 </head>
 <body>
     <div class="chat-header">
-        <span>EVOS Ultimate Messenger - متصل وآمن 🔒</span>
-        <button class="refresh-btn" onclick="fetchMessages()">تحديث الرسائل يدوياً 🔄</button>
+        <div class="header-left">
+            <span>EVOS Ultimate Messenger 🔒</span>
+            <span class="status-indicator" title="متصل الآن"></span>
+            <span class="status-text">متصل</span>
+        </div>
+        <button class="refresh-btn" onclick="fetchMessages(true)">تحديث الرسائل يدوياً 🔄</button>
     </div>
     <div class="chat-box" id="chatBox"></div>
     <div class="chat-input-area">
@@ -62,39 +69,64 @@ HTML_CODE = '''<!DOCTYPE html>
         <button onclick="sendMessage()">إرسال</button>
     </div>
     <script>
+        // طلب صلاحيات الإشعارات عند فتح المنصة
+        if (Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+
         let lastMessageCount = 0;
-        async function fetchMessages() {
+
+        async function fetchMessages(isManual = false) {
             try {
                 const res = await fetch('/get_messages');
                 const messages = await res.json();
                 const box = document.getElementById('chatBox');
                 
-                // إذا كان عدد الرسائل هو نفسه، لا تقم بإعادة بناء الواجهة لتجنب إعادة تشغيل الفيديوهات
-                if (messages.length === lastMessageCount) return;
-                lastMessageCount = messages.length;
+                // إذا لم تكن يدوية وكان العدد مطابقاً، نتجاوز التحديث للحفاظ على الوسائط
+                if (!isManual && messages.length === lastMessageCount) return;
                 
+                // إظهار إشعار إذا وصلت رسالة جديدة أثناء وجود رسائل أحدث
+                if (messages.length > lastMessageCount && lastMessageCount > 0) {
+                    const latest = messages[messages.length - 1];
+                    if (Notification.permission === "granted" && latest.sender !== 'أمين') {
+                        new Notification("رسالة جديدة في EVOS", { body: `${latest.sender}: ${latest.text || 'مرفق جديد'}` });
+                    }
+                }
+
+                lastMessageCount = messages.length;
                 box.innerHTML = '';
+
                 messages.forEach(m => {
                     const div = document.createElement('div');
                     div.className = 'msg' + (m.sender === 'أمين' ? ' me' : '');
                     let bodyHTML = `<b>${m.sender}:</b> `;
+                    
                     if (m.type === 'image') {
                         bodyHTML += `<br><img src="${m.url}" alt="صورة">`;
                     } else if (m.type === 'video') {
-                        bodyHTML += `<br><video src="${m.url}" controls playsinline preload="auto"></video>`;
+                        // حفظ واستعادة وقت الفيديو تلقائياً عبر LocalStorage
+                        const storageKey = 'video_time_' + m.url;
+                        bodyHTML += `<br><video src="${m.url}" controls playsinline preload="auto" ontimeupdate="localStorage.setItem('${storageKey}', this.currentTime)" onloadedmetadata="this.currentTime = localStorage.getItem('${storageKey}') || 0"></video>`;
                     } else if (m.type === 'audio') {
-                        bodyHTML += `<br><audio src="${m.url}" controls preload="auto"></audio>`;
+                        const audioKey = 'audio_time_' + m.url;
+                        bodyHTML += `<br><audio src="${m.url}" controls preload="auto" ontimeupdate="localStorage.setItem('${audioKey}', this.currentTime)" onloadedmetadata="this.currentTime = localStorage.getItem('${audioKey}') || 0"></audio>`;
                     } else if (m.type === 'file') {
                         bodyHTML += `<br>📁 <a href="${m.url}" target="_blank" download="${m.filename}">${m.filename || 'تحميل الملف'}</a>`;
                     } else {
                         bodyHTML += `${m.text}`;
                     }
+                    
                     bodyHTML += `<div class="time">${m.time}</div>`;
                     div.innerHTML = bodyHTML;
                     box.appendChild(div);
                 });
+
+                if (isManual) {
+                    box.scrollTop = box.scrollHeight;
+                }
             } catch (e) { console.error(e); }
         }
+
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             if (!input.value.trim()) return;
@@ -105,8 +137,9 @@ HTML_CODE = '''<!DOCTYPE html>
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: text, type: 'text', sender: 'أمين' })
             });
-            fetchMessages();
+            fetchMessages(true);
         }
+
         async function uploadFile() {
             const fileInput = document.getElementById('fileInput');
             if (!fileInput.files.length) return;
@@ -125,10 +158,11 @@ HTML_CODE = '''<!DOCTYPE html>
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: '', type: type, url: '/uploads/' + data.filename, filename: file.name, sender: 'أمين' })
                 });
-                fetchMessages();
+                fetchMessages(true);
             }
             fileInput.value = '';
         }
+
         let mediaRecorder;
         let audioChunks = [];
         let isRecording = false;
@@ -153,7 +187,7 @@ HTML_CODE = '''<!DOCTYPE html>
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ text: '', type: 'audio', url: '/uploads/' + data.filename, filename: data.filename, sender: 'أمين' })
                             });
-                            fetchMessages();
+                            fetchMessages(true);
                         }
                     };
                     mediaRecorder.start();
@@ -166,7 +200,8 @@ HTML_CODE = '''<!DOCTYPE html>
                 micBtn.classList.remove('recording');
             }
         }
-        fetchMessages();
+
+        fetchMessages(true);
     </script>
 </body>
 </html>
