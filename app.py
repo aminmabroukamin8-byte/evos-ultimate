@@ -69,7 +69,6 @@ HTML_CODE = '''<!DOCTYPE html>
         <button onclick="sendMessage()">إرسال</button>
     </div>
     <script>
-        // طلب صلاحيات الإشعارات عند فتح المنصة
         if (Notification.permission !== "granted") {
             Notification.requestPermission();
         }
@@ -82,10 +81,8 @@ HTML_CODE = '''<!DOCTYPE html>
                 const messages = await res.json();
                 const box = document.getElementById('chatBox');
                 
-                // إذا لم تكن يدوية وكان العدد مطابقاً، نتجاوز التحديث للحفاظ على الوسائط
                 if (!isManual && messages.length === lastMessageCount) return;
                 
-                // إظهار إشعار إذا وصلت رسالة جديدة أثناء وجود رسائل أحدث
                 if (messages.length > lastMessageCount && lastMessageCount > 0) {
                     const latest = messages[messages.length - 1];
                     if (Notification.permission === "granted" && latest.sender !== 'أمين') {
@@ -102,9 +99,8 @@ HTML_CODE = '''<!DOCTYPE html>
                     let bodyHTML = `<b>${m.sender}:</b> `;
                     
                     if (m.type === 'image') {
-                        bodyHTML += `<br><img src="${m.url}" alt="صورة">`;
+                        bodyHTML += `<br><img src="${m.url}" alt="صورة" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'100\'><rect width=\'100%\' height=\'100%\' fill=\'%23222\'/><text x=\'50%\' y=\'50%\' fill=\'%23888\' font-size=\'12\' dominant-baseline=\'middle\' text-anchor=\'middle\'>صورة غير متوفرة</text></svg>';">`;
                     } else if (m.type === 'video') {
-                        // حفظ واستعادة وقت الفيديو تلقائياً عبر LocalStorage
                         const storageKey = 'video_time_' + m.url;
                         bodyHTML += `<br><video src="${m.url}" controls playsinline preload="auto" ontimeupdate="localStorage.setItem('${storageKey}', this.currentTime)" onloadedmetadata="this.currentTime = localStorage.getItem('${storageKey}') || 0"></video>`;
                     } else if (m.type === 'audio') {
