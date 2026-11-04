@@ -27,7 +27,9 @@ HTML_CODE = '''<!DOCTYPE html>
     <title>EVOS Ultimate Messenger</title>
     <style>
         body { font-family: Tahoma, sans-serif; background: #111b21; color: #e9edef; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
-        .chat-header { background: #202c33; padding: 15px; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid #222d34; }
+        .chat-header { background: #202c33; padding: 15px; font-size: 18px; font-weight: bold; text-align: center; border-bottom: 1px solid #222d34; display: flex; justify-content: space-between; align-items: center; }
+        .refresh-btn { background: #2a3942; color: #fff; border: none; padding: 6px 14px; border-radius: 15px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .refresh-btn:hover { background: #00a884; }
         .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { background: #202c33; padding: 10px 15px; border-radius: 8px; max-width: 75%; align-self: flex-start; word-break: break-word; border: 1px solid #222d34; }
         .msg.me { background: #005c4b; align-self: flex-end; border: none; }
@@ -47,7 +49,10 @@ HTML_CODE = '''<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <div class="chat-header">EVOS Ultimate Messenger - متصل وآمن 🔒</div>
+    <div class="chat-header">
+        <span>EVOS Ultimate Messenger - متصل وآمن 🔒</span>
+        <button class="refresh-btn" onclick="fetchMessages()">تحديث الرسائل يدوياً 🔄</button>
+    </div>
     <div class="chat-box" id="chatBox"></div>
     <div class="chat-input-area">
         <label for="fileInput" class="attach-btn" title="إرفاق ملف">📎</label>
@@ -156,7 +161,6 @@ HTML_CODE = '''<!DOCTYPE html>
                 micBtn.classList.remove('recording');
             }
         }
-        setInterval(fetchMessages, 2000);
         fetchMessages();
     </script>
 </body>
