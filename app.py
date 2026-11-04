@@ -33,17 +33,30 @@ def init_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS tasks 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                        task TEXT, status TEXT DEFAULT 'pending')''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS bookmarks 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       title TEXT, url TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS activity_log 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       action TEXT, time TEXT)''')
     conn.commit()
     conn.close()
 
 init_db()
+
+def log_activity(action):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO activity_log (action, time) VALUES (?, ?)', (action, datetime.now().strftime('%Y-%m-%d %H:%M')))
+    conn.commit()
+    conn.close()
 
 HTML_CODE = '''<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EVOS Ultimate Messenger & Hub</title>
+    <title>EVOS Ultimate Hub - Pro Edition</title>
     <style>
         :root {
             --bg-body: #111b21;
@@ -76,23 +89,26 @@ HTML_CODE = '''<!DOCTYPE html>
         .room-tab { padding: 4px 12px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--bg-header); color: var(--text-color); border: 1px solid var(--border-color); white-space: nowrap; }
         .room-tab.active { background: #00a884; color: #fff; border-color: #00a884; }
 
-        .header-actions { display: flex; gap: 6px; align-items: center; }
+        .header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .search-box { padding: 5px 10px; border-radius: 15px; border: none; background: var(--input-bg); color: var(--text-color); font-size: 13px; outline: none; }
-        .btn-head { background: #2a3942; color: #fff; border: none; padding: 6px 12px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .btn-head { background: #2a3942; color: #fff; border: none; padding: 6px 10px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: bold; }
         .btn-head:hover { background: #00a884; }
 
         .main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
         .chat-section { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
         
-        .tasks-sidebar { width: 280px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; }
-        .tasks-sidebar h3 { font-size: 14px; margin: 0 0 10px 0; color: #00a884; }
-        .task-input-box { display: flex; gap: 5px; margin-bottom: 10px; }
-        .task-input-box input { flex: 1; padding: 6px 10px; border-radius: 15px; border: none; background: var(--input-bg); color: var(--text-color); font-size: 12px; outline: none; }
-        .task-input-box button { padding: 6px 10px; border-radius: 15px; font-size: 12px; }
-        .tasks-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-        .task-item { background: var(--input-bg); padding: 8px 10px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
-        .task-item.completed span { text-decoration: line-through; opacity: 0.6; }
-        .task-actions span { cursor: pointer; margin-left: 5px; font-size: 11px; }
+        /* Sidebars Container */
+        .sidebars-container { width: 300px; background: var(--bg-header); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 10px; overflow-y: auto; }
+        .sidebar-card { background: var(--input-bg); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); }
+        .sidebar-card h4 { font-size: 13px; margin: 0 0 8px 0; color: #00a884; display: flex; justify-content: space-between; align-items: center; }
+        
+        .mini-input-box { display: flex; gap: 5px; margin-bottom: 8px; }
+        .mini-input-box input { flex: 1; padding: 5px 8px; border-radius: 12px; border: none; background: var(--bg-header); color: var(--text-color); font-size: 11px; outline: none; }
+        .mini-input-box button { padding: 5px 8px; border-radius: 12px; font-size: 11px; }
+
+        .list-container { max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+        .list-item { background: var(--bg-header); padding: 5px 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); }
+        .list-item.completed span { text-decoration: line-through; opacity: 0.6; }
 
         .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { background: var(--bg-msg); padding: 10px 15px; border-radius: 8px; max-width: 75%; align-self: flex-start; word-break: break-word; border: 1px solid var(--border-color); position: relative; }
@@ -131,21 +147,22 @@ HTML_CODE = '''<!DOCTYPE html>
         #lightbox { display: none; position: fixed; z-index: 999; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; }
         #lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
 
-        @media(max-width: 768px) {
-            .tasks-sidebar { display: none; }
+        @media(max-width: 900px) {
+            .sidebars-container { display: none; }
         }
     </style>
 </head>
 <body>
     <div class="chat-header">
         <div class="header-left">
-            <span>EVOS Ultimate Hub 🔒</span>
+            <span>EVOS Ultimate Hub 🚀</span>
             <span class="status-indicator" title="متصل الآن"></span>
             <span class="status-text">متصل</span>
         </div>
         <div class="header-actions">
             <input type="text" class="search-box" id="searchInput" placeholder="بحث..." oninput="filterMessages()">
-            <a href="/backup" class="btn-head" style="text-decoration: none;" title="تحميل نسخة احتياطية">💾 نسخة</a>
+            <a href="/export_chat" class="btn-head" style="text-decoration: none;" title="تصدير الأرشيف">📤 تصدير</a>
+            <a href="/backup" class="btn-head" style="text-decoration: none;" title="نسخة احتياطية">💾 نسخة</a>
             <button class="btn-head" onclick="toggleTheme()">☀️/🌙</button>
             <button class="btn-head" onclick="fetchMessages(true)">تحديث 🔄</button>
         </div>
@@ -172,22 +189,52 @@ HTML_CODE = '''<!DOCTYPE html>
                 <div class="input-row">
                     <label for="fileInput" class="icon-btn" title="إرفاق ملف">📎</label>
                     <input type="file" id="fileInput" onchange="uploadFile()">
-                    <button type="button" class="icon-btn" onclick="sendLocation()" title="إرسال موقعي الجغرافي">📍</button>
+                    <button type="button" class="icon-btn" onclick="sendLocation()" title="موقعي الجغرافي">📍</button>
                     <button type="button" id="micBtn" class="icon-btn mic-btn" onclick="toggleRecordVoice()" title="تسجيل صوتي">🎙️</button>
                     <span id="timerDisplay" class="timer-display">🔴 <span id="secondsCount">0</span> ث</span>
-                    <input type="text" id="messageInput" placeholder="اكتب رسالتك هنا أو الصق صورة (Ctrl+V)..." onpaste="handlePaste(event)" oninput="notifyTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <input type="text" id="messageInput" placeholder="اكتب رسالتك أو الصق صورة (Ctrl+V)..." onpaste="handlePaste(event)" oninput="notifyTyping()" onkeypress="if(event.key === 'Enter') sendMessage()">
                     <button onclick="sendMessage()">إرسال</button>
                 </div>
             </div>
         </div>
 
-        <div class="tasks-sidebar">
-            <h3>📌 مهامي وملاحظاتي</h3>
-            <div class="task-input-box">
-                <input type="text" id="taskInput" placeholder="مهمة جديدة..." onkeypress="if(event.key === 'Enter') addTask()">
-                <button onclick="addTask()">إضافة</button>
+        <div class="sidebars-container">
+            <!-- Tasks Sidebar -->
+            <div class="sidebar-card">
+                <h4>📌 المهام</h4>
+                <div class="mini-input-box">
+                    <input type="text" id="taskInput" placeholder="مهمة جديدة..." onkeypress="if(event.key === 'Enter') addTask()">
+                    <button onclick="addTask()">إضافة</button>
+                </div>
+                <div class="list-container" id="tasksList"></div>
             </div>
-            <div class="tasks-list" id="tasksList"></div>
+
+            <!-- Bookmarks Sidebar -->
+            <div class="sidebar-card">
+                <h4>🔖 المفضلة والروابط</h4>
+                <div class="mini-input-box">
+                    <input type="text" id="bmTitle" placeholder="العنوان">
+                    <input type="text" id="bmUrl" placeholder="الرابط https://...">
+                    <button onclick="addBookmark()">إضافة</button>
+                </div>
+                <div class="list-container" id="bookmarksList"></div>
+            </div>
+
+            <!-- Ambient Sound Player -->
+            <div class="sidebar-card">
+                <h4>🎵 أصوات التركيز</h4>
+                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    <button class="btn-head" style="flex:1;" onclick="playRain()">🌧️ مطر</button>
+                    <button class="btn-head" style="flex:1;" onclick="stopAudio()">⏹️ إيقاف</button>
+                </div>
+                <audio id="ambientAudio" loop style="display: none;"></audio>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="sidebar-card">
+                <h4>📊 سجل النشاطات</h4>
+                <div class="list-container" id="activityList"></div>
+            </div>
         </div>
     </div>
 
@@ -218,7 +265,9 @@ HTML_CODE = '''<!DOCTYPE html>
             localStorage.setItem('evos_theme', isLight ? 'light' : 'dark');
         }
 
-        if (localStorage.getItem('evos_theme') === 'light') {
+        // Auto theme based on hour
+        const currentHour = new Date().getHours();
+        if (localStorage.getItem('evos_theme') === 'light' || (!localStorage.getItem('evos_theme') && currentHour >= 6 && currentHour < 18)) {
             document.body.classList.add('light-mode');
         }
 
@@ -227,16 +276,7 @@ HTML_CODE = '''<!DOCTYPE html>
                 const res = await fetch(`/get_messages?room=${encodeURIComponent(currentRoom)}`);
                 const messages = await res.json();
                 allMessagesCache = messages;
-                
                 if (!isManual && messages.length === lastMessageCount) return;
-                
-                if (messages.length > lastMessageCount && lastMessageCount > 0) {
-                    const latest = messages[messages.length - 1];
-                    if (Notification.permission === "granted" && latest.sender !== 'أمين') {
-                        new Notification(`رسالة جديدة في (${currentRoom})`, { body: `${latest.sender}: ${latest.text || 'مرفق جديد'}` });
-                    }
-                }
-
                 lastMessageCount = messages.length;
                 renderMessages(messages, isManual);
             } catch (e) { console.error(e); }
@@ -245,29 +285,24 @@ HTML_CODE = '''<!DOCTYPE html>
         function renderMessages(messages, shouldScroll = false) {
             const box = document.getElementById('chatBox');
             box.innerHTML = '';
-
             messages.forEach(m => {
                 const div = document.createElement('div');
                 div.className = 'msg' + (m.sender === 'أمين' ? ' me' : '');
-                
                 let toolsHTML = `
                     <div class="msg-tools">
                         <span onclick="setReply('${m.text ? m.text.replace(/'/g, "\\'").replace(/"/g, '&quot;') : 'مرفق'}')">↩️ رد</span>
                         ${m.sender === 'أمين' ? `<span onclick="editMessage(${m.id}, '${m.text ? m.text.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">✏️</span> <span onclick="deleteMessage(${m.id})">🗑️</span>` : ''}
                     </div>
                 `;
-
                 let replyHTML = m.reply_to ? `<div class="quoted-box">رد على: ${m.reply_to}</div>` : '';
                 let bodyHTML = `${replyHTML}<b>${m.sender}:</b> ${toolsHTML}`;
                 
                 if (m.type === 'image') {
                     bodyHTML += `<br><img src="${m.url}" alt="صورة" onclick="openLightbox('${m.url}')" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'100\\'><rect width=\\'100%\\' height=\\'100%\\' fill=\\'%23222\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'%23888\\' font-size=\\'12\\' dominant-baseline=\\'middle\\' text-anchor=\\'middle\\'>صورة غير متوفرة</text></svg>';">`;
                 } else if (m.type === 'video') {
-                    const storageKey = 'video_time_' + m.url;
-                    bodyHTML += `<br><video src="${m.url}" controls playsinline preload="auto" ontimeupdate="localStorage.setItem('${storageKey}', this.currentTime)" onloadedmetadata="this.currentTime = localStorage.getItem('${storageKey}') || 0"></video>`;
+                    bodyHTML += `<br><video src="${m.url}" controls playsinline preload="auto"></video>`;
                 } else if (m.type === 'audio') {
-                    const audioKey = 'audio_time_' + m.url;
-                    bodyHTML += `<br><audio src="${m.url}" controls preload="auto" ontimeupdate="localStorage.setItem('${audioKey}', this.currentTime)" onloadedmetadata="this.currentTime = localStorage.getItem('${audioKey}') || 0"></audio>`;
+                    bodyHTML += `<br><audio src="${m.url}" controls preload="auto"></audio>`;
                 } else if (m.type === 'file') {
                     bodyHTML += `<br>📁 <a href="${m.url}" target="_blank" download="${m.filename}">${m.filename || 'تحميل الملف'}</a>`;
                 } else {
@@ -279,12 +314,10 @@ HTML_CODE = '''<!DOCTYPE html>
                     }
                     bodyHTML += `${formattedText}`;
                 }
-                
                 bodyHTML += `<div class="time">${m.time}</div>`;
                 div.innerHTML = bodyHTML;
                 box.appendChild(div);
             });
-
             if (shouldScroll) { box.scrollTop = box.scrollHeight; }
         }
 
@@ -306,23 +339,14 @@ HTML_CODE = '''<!DOCTYPE html>
         }
 
         function notifyTyping() {
-            fetch('/typing', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ room: currentRoom, sender: 'أمين' })
-            });
+            fetch('/typing', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: currentRoom, sender: 'أمين' }) });
         }
 
         setInterval(async () => {
             try {
                 const res = await fetch(`/get_typing?room=${encodeURIComponent(currentRoom)}`);
                 const data = await res.json();
-                const indicator = document.getElementById('typingIndicator');
-                if (data.is_typing && data.sender !== 'أمين') {
-                    indicator.innerText = `${data.sender} يكتب الآن...`;
-                } else {
-                    indicator.innerText = '';
-                }
+                document.getElementById('typingIndicator').innerText = (data.is_typing && data.sender !== 'أمين') ? `${data.sender} يكتب الآن...` : '';
             } catch(e) {}
         }, 2000);
 
@@ -340,13 +364,9 @@ HTML_CODE = '''<!DOCTYPE html>
             const reply = replyingToText;
             input.value = '';
             cancelReply();
-            
-            await fetch('/send_message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ room: currentRoom, text: text, type: 'text', reply_to: reply, sender: 'أمين' })
-            });
+            await fetch('/send_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: currentRoom, text: text, type: 'text', reply_to: reply, sender: 'أمين' }) });
             fetchMessages(true);
+            fetchActivity();
         }
 
         async function handlePaste(event) {
@@ -361,162 +381,145 @@ HTML_CODE = '''<!DOCTYPE html>
                     let res = await fetch('/upload', { method: 'POST', body: formData });
                     let data = await res.json();
                     if (data.status === 'success') {
-                        await fetch('/send_message', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ room: currentRoom, text: '', type: 'image', url: '/uploads/' + data.filename, filename: data.filename, reply_to: replyingToText, sender: 'أمين' })
-                        });
+                        await fetch('/send_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: currentRoom, text: '', type: 'image', url: '/uploads/' + data.filename, filename: data.filename, reply_to: replyingToText, sender: 'أمين' }) });
                         cancelReply();
                         fetchMessages(true);
+                        fetchActivity();
                     }
                 }
             }
         }
 
+        // Tasks & Bookmarks & Activity Fetchers
         async function fetchTasks() {
-            try {
-                const res = await fetch('/get_tasks');
-                const tasks = await res.json();
-                const list = document.getElementById('tasksList');
-                list.innerHTML = '';
-                tasks.forEach(t => {
-                    const div = document.createElement('div');
-                    div.className = 'task-item' + (t.status === 'completed' ? ' completed' : '');
-                    div.innerHTML = `
-                        <span onclick="toggleTask(${t.id})" style="cursor: pointer; flex: 1;">${t.task}</span>
-                        <div class="task-actions">
-                            <span onclick="deleteTask(${t.id})">❌</span>
-                        </div>
-                    `;
-                    list.appendChild(div);
-                });
-            } catch(e) {}
+            const res = await fetch('/get_tasks');
+            const tasks = await res.json();
+            const list = document.getElementById('tasksList');
+            list.innerHTML = '';
+            tasks.forEach(t => {
+                list.innerHTML += `<div class="list-item ${t.status === 'completed' ? 'completed' : ''}"><span onclick="toggleTask(${t.id})" style="cursor:pointer;flex:1;">${t.task}</span><span onclick="deleteTask(${t.id})" style="cursor:pointer;">❌</span></div>`;
+            });
         }
-
         async function addTask() {
             const input = document.getElementById('taskInput');
             if (!input.value.trim()) return;
-            const task = input.value;
+            await fetch('/add_task', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: input.value }) });
             input.value = '';
-            await fetch('/add_task', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ task: task })
+            fetchTasks();
+            fetchActivity();
+        }
+        async function toggleTask(id) { await fetch('/toggle_task/' + id, { method: 'PUT' }); fetchTasks(); }
+        async function deleteTask(id) { await fetch('/delete_task/' + id, { method: 'DELETE' }); fetchTasks(); }
+
+        async function fetchBookmarks() {
+            const res = await fetch('/get_bookmarks');
+            const bms = await res.json();
+            const list = document.getElementById('bookmarksList');
+            list.innerHTML = '';
+            bms.forEach(b => {
+                list.innerHTML += `<div class="list-item"><a href="${b.url}" target="_blank" style="flex:1;color:var(--text-color);">${b.title}</a><span onclick="deleteBookmark(${b.id})" style="cursor:pointer;">❌</span></div>`;
             });
-            fetchTasks();
+        }
+        async function addBookmark() {
+            const title = document.getElementById('bmTitle').value;
+            const url = document.getElementById('bmUrl').value;
+            if (!title || !url) return;
+            await fetch('/add_bookmark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, url }) });
+            document.getElementById('bmTitle').value = '';
+            document.getElementById('bmUrl').value = '';
+            fetchBookmarks();
+        }
+        async function deleteBookmark(id) { await fetch('/delete_bookmark/' + id, { method: 'DELETE' }); fetchBookmarks(); }
+
+        async function fetchActivity() {
+            const res = await fetch('/get_activity');
+            const logs = await res.json();
+            const list = document.getElementById('activityList');
+            list.innerHTML = '';
+            logs.forEach(l => {
+                list.innerHTML += `<div class="list-item"><span>${l.action}</span><span style="opacity:0.5;font-size:9px;">${l.time}</span></div>`;
+            });
         }
 
-        async function toggleTask(id) {
-            await fetch('/toggle_task/' + id, { method: 'PUT' });
-            fetchTasks();
+        // Ambient Audio
+        function playRain() {
+            const audio = document.getElementById('ambientAudio');
+            audio.src = 'https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg';
+            audio.play();
         }
-
-        async function deleteTask(id) {
-            await fetch('/delete_task/' + id, { method: 'DELETE' });
-            fetchTasks();
+        function stopAudio() {
+            const audio = document.getElementById('ambientAudio');
+            audio.pause();
+            audio.currentTime = 0;
         }
 
         async function deleteMessage(id) {
-            if (!confirm('حذف هذه الرسالة؟')) return;
+            if (!confirm('حذف؟')) return;
             await fetch('/delete_message/' + id, { method: 'DELETE' });
             fetchMessages(true);
+            fetchActivity();
         }
-
         async function editMessage(id, oldText) {
-            const newText = prompt('تعديل الرسالة:', oldText);
-            if (newText !== null && newText.trim() !== '') {
-                await fetch('/edit_message/' + id, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: newText.trim() })
-                });
+            const newText = prompt('تعديل:', oldText);
+            if (newText) {
+                await fetch('/edit_message/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: newText }) });
                 fetchMessages(true);
+                fetchActivity();
             }
         }
-
         function sendLocation() {
-            if (!navigator.geolocation) { alert('الموقع الجغرافي غير مدعوم.'); return; }
             navigator.geolocation.getCurrentPosition(async (pos) => {
-                const locUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
-                const text = `📍 موقعي الجغرافي: <a href="${locUrl}" target="_blank">فتح الخريطة</a>`;
-                await fetch('/send_message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ room: currentRoom, text: text, type: 'text', reply_to: '', sender: 'أمين' })
-                });
+                const text = `📍 موقعي: <a href="https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}" target="_blank">فتح الخريطة</a>`;
+                await fetch('/send_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: currentRoom, text, type: 'text', sender: 'أمين' }) });
                 fetchMessages(true);
-            }, () => { alert('تعذر جلب الموقع.'); });
+            });
         }
-
         async function uploadFile() {
             const fileInput = document.getElementById('fileInput');
             if (!fileInput.files.length) return;
-            const file = fileInput.files[0];
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', fileInput.files[0]);
             const res = await fetch('/upload', { method: 'POST', body: formData });
             const data = await res.json();
             if (data.status === 'success') {
                 let type = 'file';
-                if (file.type.startsWith('image/')) type = 'image';
-                else if (file.type.startsWith('video/')) type = 'video';
-                else if (file.type.startsWith('audio/')) type = 'audio';
-                await fetch('/send_message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ room: currentRoom, text: '', type: type, url: '/uploads/' + data.filename, filename: file.name, reply_to: replyingToText, sender: 'أمين' })
-                });
-                cancelReply();
+                if (fileInput.files[0].type.startsWith('image/')) type = 'image';
+                await fetch('/send_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: currentRoom, text: '', type, url: '/uploads/' + data.filename, filename: fileInput.files[0].name, sender: 'أمين' }) });
                 fetchMessages(true);
+                fetchActivity();
             }
             fileInput.value = '';
         }
 
-        let mediaRecorder;
-        let audioChunks = [];
-        let isRecording = false;
+        let mediaRecorder, audioChunks = [], isRecording = false;
         async function toggleRecordVoice() {
-            const micBtn = document.getElementById('micBtn');
-            const timerDisplay = document.getElementById('timerDisplay');
-            const secondsCount = document.getElementById('secondsCount');
-            
+            const micBtn = document.getElementById('micBtn'), timerDisplay = document.getElementById('timerDisplay'), secondsCount = document.getElementById('secondsCount');
             if (!isRecording) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    audioChunks = [];
-                    recordingSeconds = 0;
-                    secondsCount.innerText = '0';
-                    timerDisplay.style.display = 'flex';
-                    
-                    timerInterval = setInterval(() => {
-                        recordingSeconds++;
-                        secondsCount.innerText = recordingSeconds;
-                    }, 1000);
-
-                    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-                    mediaRecorder.onstop = async () => {
-                        clearInterval(timerInterval);
-                        timerDisplay.style.display = 'none';
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        const fileName = 'voice_' + Date.now() + '.webm';
-                        const formData = new FormData();
-                        formData.append('file', audioBlob, fileName);
-                        const res = await fetch('/upload', { method: 'POST', body: formData });
-                        const data = await res.json();
-                        if (data.status === 'success') {
-                            await fetch('/send_message', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ room: currentRoom, text: '', type: 'audio', url: '/uploads/' + data.filename, filename: data.filename, reply_to: '', sender: 'أمين' })
-                            });
-                            fetchMessages(true);
-                        }
-                    };
-                    mediaRecorder.start();
-                    isRecording = true;
-                    micBtn.classList.add('recording');
-                } catch (err) { alert('تعذر الوصول للميكروفون.'); }
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                recordingSeconds = 0;
+                secondsCount.innerText = '0';
+                timerDisplay.style.display = 'flex';
+                timerInterval = setInterval(() => { recordingSeconds++; secondsCount.innerText = recordingSeconds; }, 1000);
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                mediaRecorder.onstop = async () => {
+                    clearInterval(timerInterval);
+                    timerDisplay.style.display = 'none';
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const formData = new FormData();
+                    formData.append('file', blob, 'voice_' + Date.now() + '.webm');
+                    const res = await fetch('/upload', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        await fetch('/send_message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: currentRoom, text: '', type: 'audio', url: '/uploads/' + data.filename, filename: data.filename, sender: 'أمين' }) });
+                        fetchMessages(true);
+                        fetchActivity();
+                    }
+                };
+                mediaRecorder.start();
+                isRecording = true;
+                micBtn.classList.add('recording');
             } else {
                 mediaRecorder.stop();
                 isRecording = false;
@@ -526,6 +529,8 @@ HTML_CODE = '''<!DOCTYPE html>
 
         fetchMessages(true);
         fetchTasks();
+        fetchBookmarks();
+        fetchActivity();
         setInterval(() => fetchMessages(false), 3000);
     </script>
 </body>
@@ -546,12 +551,10 @@ def get_messages():
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM messages WHERE room = ? ORDER BY id ASC', (room,))
     rows = cursor.fetchall()
-    messages = []
-    for row in rows:
-        m = dict(row)
+    messages = [dict(row) for row in rows]
+    for m in messages:
         m['text'] = decrypt_text(m['text'])
         m['reply_to'] = decrypt_text(m['reply_to'])
-        messages.append(m)
     conn.close()
     return jsonify(messages)
 
@@ -559,14 +562,13 @@ def get_messages():
 def send_message():
     data = request.json
     if data:
-        cipher_text = encrypt_text(data.get('text', ''))
-        cipher_reply = encrypt_text(data.get('reply_to', ''))
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('INSERT INTO messages (room, text, type, url, filename, reply_to, sender, time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-                       (data.get('room', 'عام'), cipher_text, data.get('type', 'text'), data.get('url', ''), data.get('filename', ''), cipher_reply, data.get('sender', 'أمين'), datetime.now().strftime('%H:%M')))
+                       (data.get('room', 'عام'), encrypt_text(data.get('text', '')), data.get('type', 'text'), data.get('url', ''), data.get('filename', ''), encrypt_text(data.get('reply_to', '')), data.get('sender', 'أمين'), datetime.now().strftime('%H:%M')))
         conn.commit()
         conn.close()
+        log_activity(f"إرسال رسالة في غرفة {data.get('room', 'عام')}")
         return jsonify({'status': 'success'}), 200
     return jsonify({'error': 'Invalid'}), 400
 
@@ -590,6 +592,7 @@ def add_task():
         cursor.execute('INSERT INTO tasks (task) VALUES (?)', (data['task'],))
         conn.commit()
         conn.close()
+        log_activity(f"إضافة مهمة جديدة")
         return jsonify({'status': 'success'}), 200
     return jsonify({'error': 'Invalid'}), 400
 
@@ -615,6 +618,67 @@ def delete_task(task_id):
     conn.close()
     return jsonify({'status': 'deleted'}), 200
 
+@app.route('/get_bookmarks', methods=['GET'])
+def get_bookmarks():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM bookmarks ORDER BY id DESC')
+    bms = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify(bms)
+
+@app.route('/add_bookmark', methods=['POST'])
+def add_bookmark():
+    data = request.json
+    if data:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO bookmarks (title, url) VALUES (?, ?)', (data.get('title'), data.get('url')))
+        conn.commit()
+        conn.close()
+        log_activity(f"إضافة مفضلة: {data.get('title')}")
+        return jsonify({'status': 'success'}), 200
+    return jsonify({'error': 'Invalid'}), 400
+
+@app.route('/delete_bookmark/<int:bm_id>', methods=['DELETE'])
+def delete_bookmark(bm_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM bookmarks WHERE id = ?', (bm_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'deleted'}), 200
+
+@app.route('/get_activity', methods=['GET'])
+def get_activity():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM activity_log ORDER BY id DESC LIMIT 10')
+    logs = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify(logs)
+
+@app.route('/export_chat', methods=['GET'])
+def export_chat():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM messages ORDER BY id ASC')
+    rows = cursor.fetchall()
+    html_content = "<html><head><meta charset='UTF-8'><title>EVOS Export</title></head><body style='font-family:Tahoma;background:#111;color:#fff;padding:20px;'>"
+    html_content += "<h2>أرشيف محادثات EVOS Ultimate Hub</h2><hr/>"
+    for r in rows:
+        txt = decrypt_text(r['text'])
+        html_content += f"<p><b>{r['sender']}</b> [{r['time']}]: {txt} {r['filename']}</p>"
+    html_content += "</body></html>"
+    export_path = 'evos_export.html'
+    with open(export_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    conn.close()
+    return send_file(export_path, as_attachment=True, download_name='evos_archive.html')
+
 @app.route('/backup', methods=['GET'])
 def backup_database():
     if os.path.exists(DB_PATH):
@@ -625,8 +689,7 @@ def backup_database():
 def typing():
     data = request.json
     if data:
-        room = data.get('room', 'عام')
-        typing_states[room] = {'sender': data.get('sender', 'أمين'), 'time': datetime.now()}
+        typing_states[data.get('room', 'عام')] = {'sender': data.get('sender', 'أمين'), 'time': datetime.now()}
         return jsonify({'status': 'ok'}), 200
     return jsonify({'error': 'Invalid'}), 400
 
@@ -642,12 +705,12 @@ def get_typing():
 def edit_message(msg_id):
     data = request.json
     if data and 'text' in data:
-        cipher_text = encrypt_text(data['text'])
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute('UPDATE messages SET text = ? WHERE id = ?', (cipher_text, msg_id))
+        cursor.execute('UPDATE messages SET text = ? WHERE id = ?', (encrypt_text(data['text']), msg_id))
         conn.commit()
         conn.close()
+        log_activity(f"تعديل رسالة #{msg_id}")
         return jsonify({'status': 'updated'}), 200
     return jsonify({'error': 'Invalid'}), 400
 
@@ -658,6 +721,7 @@ def delete_message(msg_id):
     cursor.execute('DELETE FROM messages WHERE id = ?', (msg_id,))
     conn.commit()
     conn.close()
+    log_activity(f"حذف رسالة #{msg_id}")
     return jsonify({'status': 'deleted'}), 200
 
 @app.route('/upload', methods=['POST'])
@@ -667,6 +731,7 @@ def upload_file():
     if file and file.filename:
         safe_filename = file.filename.replace(' ', '_')
         file.save(os.path.join(UPLOAD_FOLDER, safe_filename))
+        log_activity(f"رفع ملف: {safe_filename}")
         return jsonify({'status': 'success', 'filename': safe_filename}), 200
     return jsonify({'error': 'Failed'}), 400
 
